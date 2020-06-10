@@ -28,6 +28,13 @@ const dinasaurSchema = yup.object().shape({
   power: yup.string().min(4).required(),
 });
 
+const dinasaurUpdateSchema = yup.object().shape({
+  id: yup.number().max(100).required(),
+  name: yup.string().trim().min(3),
+  image: yup.string().url(),
+  power: yup.string().min(4),
+});
+
 const app = new Application();
 const router = new Router();
 
@@ -93,9 +100,6 @@ router.post("/dino", async (ctx) => {
   } catch (error) {
     console.error(error.stack);
 
-    if (error.name === "ValidationError") {
-      ctx.response.status = Status.UnprocessableEntity;
-    }
     throw error;
   }
 });
@@ -122,10 +126,44 @@ router.delete("/dino/:id", async (ctx) => {
   }
 });
 
+router.put("/dino", async (ctx) => {
+  try {
+    if (!ctx.request.hasBody) {
+      ctx.response.status = Status.UnprocessableEntity;
+      throw new Error("Provide JSON body");
+    }
+
+    const body = await ctx.request.body();
+    const value = body.value;
+
+    const dino = await dinasaurUpdateSchema.validate(value);
+    const dinoId = dino?.id;
+
+    const keys = Object.keys(value).filter((k) => k != "id");
+
+    const updatePayload = keys.map((k) => `${k} = "${value[k]}"`);
+
+    await client.execute(
+      `UPDATE dinosaur SET ${updatePayload.join(", ")}  WHERE id=${dinoId}`,
+    );
+
+    ctx.response.status = Status.OK;
+    ctx.response.body = {
+      message: "Updated",
+    };
+  } catch (error) {
+    throw error;
+  }
+});
+
 app.use(async (ctx, next) => {
   try {
     await next();
   } catch (err) {
+    if (err.name === "ValidationError") {
+      ctx.response.status = Status.UnprocessableEntity;
+    }
+
     ctx.response.status = ctx.response.status || 500;
     ctx.response.body = {
       message: err.message,
